@@ -24,6 +24,7 @@ type Group struct {
 	name      string
 	getter    Getter
 	mainCache cache
+	peers     PeerPicker
 }
 
 var (
@@ -69,11 +70,6 @@ func (g *Group) Get(key string) (ByteView, error) {
 	return g.load(key) // 缓存中没有命中，加载数据
 }
 
-// load 负责加载数据并填充到缓存中。
-func (g *Group) load(key string) (value ByteView, err error) {
-	return g.getLocally(key) // 当前实现仅支持本地加载
-}
-
 // getLocally 从本地加载数据，并将其填充到缓存中。
 func (g *Group) getLocally(key string) (ByteView, error) {
 	bytes, err := g.getter.Get(key)
@@ -88,4 +84,38 @@ func (g *Group) getLocally(key string) (ByteView, error) {
 // populateCache 将数据添加到缓存中。
 func (g *Group) populateCache(key string, value ByteView) {
 	g.mainCache.add(key, value)
+}
+
+// RegisterPeers 注册一个 PeerPicker，用于选择远程对等节点。
+// PeerPicker 负责根据键选择合适的对等节点。
+func (g *Group) RegisterPeers(peers PeerPicker) {
+	if g.peers != nil {
+		panic("RegisterPeerPicker called more than once") // 确保只调用一次
+	}
+	g.peers = peers // 将 PeerPicker 实例绑定到缓存组
+}
+
+// load 方法尝试从本地或远程对等节点加载指定键的值。
+func (g *Group) load(key string) (value ByteView, err error) {
+	if g.peers != nil { // 如果已注册 PeerPicker
+		if peer, ok := g.peers.PickPeer(key); ok { // 根据键选择对等节点
+			if value, err = g.getFromPeer(peer, key); err == nil { // 从对等节点获取数据
+				return value, nil
+			}
+			log.Println("[GeeCache] Failed to get from peer", err) // 日志记录失败信息
+		}
+	}
+
+	// 如果远程获取失败或未注册 PeerPicker，则从本地加载
+	return g.getLocally(key)
+}
+
+// getFromPeer 从指定的对等节点获取数据。
+func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
+	// 调用对等节点的 Get 方法获取数据
+	bytes, err := peer.Get(g.name, key)
+	if err != nil {
+		return ByteView{}, err // 如果获取失败，返回错误
+	}
+	return ByteView{b: bytes}, nil // 包装数据并返回
 }
