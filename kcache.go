@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"kCache/singleflight"
 	"log"
 	"sync"
 )
@@ -25,6 +26,9 @@ type Group struct {
 	getter    Getter
 	mainCache cache
 	peers     PeerPicker
+	// use singleflight.Group to make sure that
+	// each key is only fetched once
+	loader *singleflight.Group
 }
 
 var (
@@ -43,6 +47,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 		name:      name,
 		getter:    getter,
 		mainCache: cache{cacheBytes: cacheBytes},
+		loader:    &singleflight.Group{},
 	}
 	groups[name] = g
 	return g
@@ -96,18 +101,31 @@ func (g *Group) RegisterPeers(peers PeerPicker) {
 }
 
 // load 方法尝试从本地或远程对等节点加载指定键的值。
+// load 方法尝试从本地或远程对等节点加载指定键的值。
+// 每个键的加载操作只执行一次，无论有多少并发调用者。
 func (g *Group) load(key string) (value ByteView, err error) {
-	if g.peers != nil { // 如果已注册 PeerPicker
-		if peer, ok := g.peers.PickPeer(key); ok { // 根据键选择对等节点
-			if value, err = g.getFromPeer(peer, key); err == nil { // 从对等节点获取数据
-				return value, nil
+	// 使用 singleflight.Group 确保每个键的加载操作只执行一次
+	viewi, err := g.loader.Do(key, func() (interface{}, error) {
+		// 如果已注册 PeerPicker，尝试从远程对等节点获取数据
+		if g.peers != nil {
+			if peer, ok := g.peers.PickPeer(key); ok {
+				// 从远程对等节点获取数据
+				if value, err = g.getFromPeer(peer, key); err == nil {
+					return value, nil
+				}
+				log.Println("[kCache] Failed to get from peer", err)
 			}
-			log.Println("[GeeCache] Failed to get from peer", err) // 日志记录失败信息
 		}
-	}
 
-	// 如果远程获取失败或未注册 PeerPicker，则从本地加载
-	return g.getLocally(key)
+		// 如果远程获取失败或未注册 PeerPicker，则从本地加载
+		return g.getLocally(key)
+	})
+
+	// 如果加载成功，返回 ByteView 类型的结果
+	if err == nil {
+		return viewi.(ByteView), nil
+	}
+	return
 }
 
 // getFromPeer 从指定的对等节点获取数据。
