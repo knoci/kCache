@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"google.golang.org/protobuf/proto"
 	"io/ioutil"
 	"kCache/consistenthash"
+	pb "kCache/proto"
 	"log"
 	"net/http"
 	"net/url"
@@ -13,8 +15,8 @@ import (
 
 // 默认的基础路径和副本数量。
 const (
-	defaultBasePath = "/_geecache/" // 默认的基础路径
-	defaultReplicas = 50            // 默认的副本数量
+	defaultBasePath = "/_kcache/" // 默认的基础路径
+	defaultReplicas = 50          // 默认的副本数量
 )
 
 // httpGetter 是一个用于从远程 HTTP 服务器获取数据的结构体。
@@ -74,24 +76,28 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	body, err := proto.Marshal(&pb.Response{Value: view.ByteSlice()})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/octet-stream") // 设置响应头，表示返回二进制数据
-	w.Write(view.ByteSlice())                                  // 将缓存值写入响应体
+	w.Write(body)                                              // 将缓存值写入响应体
 }
 
 // Get 方法通过 HTTP GET 请求从远程服务器获取指定键的值。
-func (h *httpGetter) Get(group string, key string) ([]byte, error) {
+func (h *httpGetter) Get(in *pb.Request, out *pb.Response) ([]byte, error) {
 	// 构建完整的请求 URL，包括对 group 和 key 的 URL 编码。
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
-		url.QueryEscape(group),
-		url.QueryEscape(key),
+		url.QueryEscape(in.GetGroup()),
+		url.QueryEscape(in.GetKey()),
 	)
 	// 发起 HTTP GET 请求。
 	res, err := http.Get(u)
-	if err != nil {
-		return nil, err // 如果请求失败，返回错误
-	}
+
 	defer res.Body.Close() // 确保响应体在函数返回时关闭
 
 	// 检查 HTTP 响应状态码。
@@ -101,6 +107,9 @@ func (h *httpGetter) Get(group string, key string) ([]byte, error) {
 
 	// 读取响应体内容。
 	bytes, err := ioutil.ReadAll(res.Body)
+	if err = proto.Unmarshal(bytes, out); err != nil {
+		return nil, fmt.Errorf("decoding response body: %v", err)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("reading response body: %v", err) // 如果读取失败，返回错误
 	}

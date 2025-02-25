@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	pb "kCache/proto"
 	"kCache/singleflight"
 	"log"
 	"sync"
@@ -130,10 +131,14 @@ func (g *Group) load(key string) (value ByteView, err error) {
 
 // getFromPeer 从指定的对等节点获取数据。
 func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
-	// 调用对等节点的 Get 方法获取数据
-	bytes, err := peer.Get(g.name, key)
-	if err != nil {
-		return ByteView{}, err // 如果获取失败，返回错误
+	req := &pb.Request{
+		Group: g.name,
+		Key:   key,
 	}
-	return ByteView{b: bytes}, nil // 包装数据并返回
+	res := &pb.Response{}
+	_, err := peer.Get(req, res)
+	if err != nil {
+		return ByteView{}, err
+	}
+	return ByteView{b: res.Value}, nil
 }

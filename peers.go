@@ -1,5 +1,7 @@
 package main
 
+import pb "kCache/proto"
+
 // PeerPicker 是一个接口，用于定位拥有特定键的对等节点（peer）。
 // 实现该接口的类型需要提供一个方法来选择对等节点。
 type PeerPicker interface {
@@ -14,5 +16,5 @@ type PeerPicker interface {
 type PeerGetter interface {
 	// Get 方法从对等节点获取指定分组和键的值。
 	// 如果成功获取数据，返回字节切片；否则返回错误。
-	Get(group string, key string) ([]byte, error)
+	Get(in *pb.Request, out *pb.Response) ([]byte, error)
 }
