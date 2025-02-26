@@ -27,8 +27,7 @@ type Group struct {
 	getter    Getter
 	mainCache cache
 	peers     PeerPicker
-	// use singleflight.Group to make sure that
-	// each key is only fetched once
+	// 使用 singleflight.Group 来确保每个key只取得一次
 	loader *singleflight.Group
 }
 
@@ -101,7 +100,6 @@ func (g *Group) RegisterPeers(peers PeerPicker) {
 	g.peers = peers // 将 PeerPicker 实例绑定到缓存组
 }
 
-// load 方法尝试从本地或远程对等节点加载指定键的值。
 // load 方法尝试从本地或远程对等节点加载指定键的值。
 // 每个键的加载操作只执行一次，无论有多少并发调用者。
 func (g *Group) load(key string) (value ByteView, err error) {

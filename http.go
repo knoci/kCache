@@ -125,22 +125,22 @@ func (p *HTTPPool) Set(peers ...string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.peers = consistenthash.New(defaultReplicas, nil)       // 创建一致性哈希映射
-	p.peers.Add(peers...)                                    // 添加对等节点
+	p.peers.Add(peers...)                                    // 添加节点
 	p.httpGetters = make(map[string]*httpGetter, len(peers)) // 初始化 httpGetters 映射
 	for _, peer := range peers {
-		p.httpGetters[peer] = &httpGetter{baseURL: peer + p.basePath} // 为每个对等节点创建 httpGetter 实例
+		p.httpGetters[peer] = &httpGetter{baseURL: peer + p.basePath} // 为每个节点创建 httpGetter 实例
 	}
 }
 
-// PickPeer 方法根据键选择一个对等节点。
+// PickPeer 方法根据键选择一个节点。
 func (p *HTTPPool) PickPeer(key string) (PeerGetter, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if peer := p.peers.Get(key); peer != "" && peer != p.self { // 根据键选择对等节点
+	if peer := p.peers.Get(key); peer != "" && peer != p.self { // 根据键选择节点
 		p.Log("Pick peer %s", peer)      // 日志记录
-		return p.httpGetters[peer], true // 返回对等节点的 httpGetter 实例
+		return p.httpGetters[peer], true // 返回节点的 httpGetter 实例
 	}
-	return nil, false // 如果没有找到合适的对等节点，返回 nil
+	return nil, false // 如果没有找到合适的对节点，返回 nil
 }
 
 // 确保 HTTPPool 实现了 PeerPicker 接口。
